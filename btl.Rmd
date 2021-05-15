@@ -1,0 +1,340 @@
+---
+title: "Bài trình bày P2"
+output:
+  html_document:
+    df_print: paged
+---
+```{r, echo=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE )  # comment
+```
+
+
+
+```{r, message=FALSE, Warning = FALSE, echo=FALSE}
+
+library(readxl)	      # import dữ liệu
+library(readr)	      # import dữ liệu
+library(dplyr)	      # xử lí dữ liệu
+library(tidyr)	      # xử lí dữ liệu
+library(countrycode)	# xử lí dữ liệu
+library(janitor)	    # xử lí dữ liệu
+library(plotly)	      # vẽ biểu đồ
+library(ggplot2)	    # vẽ biểu đồ
+library(see)	        # 
+library(extrafont)	  # 
+library(stringi)	    # xử lí dữ liệu
+library(kableExtra)	  # format bảng
+library(sparkline)	  # format bảng
+library(formattable)	# format bảng
+
+```
+
+```{r thiet lap mau sac và font cua bieu do}
+# Font selected: 
+my_font <- "Courier New"
+# Colors selected: 
+my_colors <- c("#3E606F", "#8C3F4D")
+my_theme <- function(...){
+  theme_abyss() + 
+    theme(plot.margin = unit(c(1, 2, 1, 1), "cm")) + 
+    theme(plot.title = element_text(size = 18, family = my_font)) + 
+    theme(plot.subtitle = element_text(size = 13, family = my_font)) + 
+    theme(plot.caption  = element_text(size = 12, family = my_font)) + 
+    theme(axis.text = element_text(family = my_font, size = 13)) + 
+    theme(panel.grid.major.y = element_blank())
+}
+```
+
+```{r import du lieu}
+ins_companies <- read_excel("ins_companies.xlsx")
+states <- read_csv("states.csv")
+```
+
+
+```{r }
+ins_companies %>% 
+  clean_names() %>%  #làm sạch tên các cột
+  na.omit() ->dt_ins # bỏ các giá trị na
+```
+```{r key figure trend}
+# tạo ra 1 biến mới là hover: nhãn của dữ liệu mình vẽ. giá trị là 1 string với tên công ty được thành lập tại qg và năm thành lập  
+# vẽ biểu đồ plotly : x = ~year_founded : trục x là năm , y = ~current_employee_estimate trục y là số lượng nv ước tính
+# adđ_trace : trên nhãn cho các điểm: text =~ hover : nhãn là biến hover mới được tạo bên trên với thông tin hoverinfo ="text" là dạng của hover đấy 
+# lay_out : thêm các thông tin khác như title, tên trục x, tên trục y
+dt_ins %>% 
+  mutate(hover = paste0(name,"\n founded in ",country, ", ", year_founded,"\n Number of employee estimate: ", current_employee_estimate)) %>%
+  plot_ly(x= ~year_founded, 
+          y= ~current_employee_estimate) %>% 
+   add_trace(text = ~hover,
+            hoverinfo ="text") %>% 
+  layout(title = 'Number of employees and year founded',
+         xaxis = list(title = "Year founded"),
+         yaxis = list(title = "Number of employees")) -> scatter_plot
+  
+```
+```{r tao data map}
+# với data dt_ins: đếm số lần country xuất hiện và sắp xếp theo thứ tự giảm dần
+# tạo 1 vector code ứng với dãy tên country với lệnh countrycode. tự tự là chuyển từ tên quốc gia country.name" sang dạng kí hiệu 3 chữ "iso3c".
+# gộp lại thành 1 data và bỏ đi giá trị NA
+dt_ins %>% 
+  count(country) %>% 
+  arrange(desc(n)) -> dt_ins_map
+code<-countrycode(dt_ins_map$country,"country.name","iso3c")
+dt_ins_map.code<-data.frame(code,dt_ins_map)
+dt_ins_map.code <- na.omit(dt_ins_map.code)
+```
+
+```{r tinh so luong nhan vien tai us}
+dt_ins %>% 
+  filter(country=="United States") %>%     #chon cac quan sat tai mi
+  select(c(current_employee_estimate)) %>% #chọn cột current_employee_estimate và tính tổng
+  sum() -> employees_us               
+```
+
+```{r bieu do histogram}
+# vẽ đồ thị
+# tạo biến mới là is_us. biến này nhận giá trị = 1 nếu country là us và bằng 0 trong trường hợp khác 
+# vẽ biểu đồ histogram với 45 cột ( bins = 45L) và chia thành 2 đồ thị vứi giá trị là biến is_us  bằng câu lệnh facet_wrap(vars(is_us))
+dt_ins %>% 
+  mutate(is_us = case_when(country == "United States" ~ "USA",
+                           country != "United States" ~ "Other countries")) %>% 
+ ggplot() +
+ aes(x = year_founded) +
+ geom_histogram(bins = 45L, fill = my_colors[2],color="#2c3e50") +
+ theme_minimal() +
+ facet_wrap(vars(is_us))+
+ theme_abyss()+
+ theme(plot.margin = unit(c(1, 2, 1, 1), "cm")) + 
+ theme(plot.title = element_text(size = 18, family = my_font)) + 
+ theme(plot.subtitle = element_text(size = 13, family = my_font)) + 
+ theme(plot.caption  = element_text(size = 12, family = my_font)) + 
+ theme(axis.text = element_text(family = my_font, size = 13)) + 
+ theme(panel.grid.major.x = element_blank())+
+  labs(x = "Year founded", y = "Number of companies",
+       title = "Number of insurance companies in the US and the rest of the world",
+       subtitle = paste0("US has ",dt_ins_map.code$n[1], " with ", employees_us, " employees"),
+       caption = "Source: Kaggle.com") -> barchart2
+  
+
+```
+
+```{r tao bang}
+# tạo biến is_us như trên
+# chỉ giữ lại 2 biến is_us và year_founded để dễ quan sát
+# sử dụng count với cả 2 biến trên để có được bảng tần số và sử dụng pivot_wider để chuyển biến is_us thành 2 biến riêng vớ giá trị là count (n)
+#lọc theo năm với năm giảm dần và vẽ bảng
+dt_ins %>% 
+  filter(year_founded >= 2000) %>% 
+  mutate(is_us = case_when(country == "United States" ~ "USA",
+                           country != "United States" ~ "Other countries")) %>% 
+  select(is_us,year_founded) %>% 
+  count(year_founded,is_us) %>% 
+  pivot_wider(names_from = is_us,values_from = n) %>% 
+  arrange(desc(year_founded)) %>% 
+  kbl() %>%
+  kable_material_dark() -> bang_2
+```
+
+
+```{r}
+dt_ins_map.code %>% 
+  arrange(desc(n)) %>% 
+  slice(1:20) %>% 
+  ggplot(aes(reorder(country,n),n)) +
+  geom_col(fill = my_colors[2]) + 
+  coord_flip() + 
+  labs(x = NULL, y = NULL, title = "Top 20 countries with the most insurance companies ",
+       subtitle = paste0("US has ",dt_ins_map.code$n[1], " with ", employees_us, " employees"),
+       caption = "Source: Kaggle.com") +
+  geom_text(aes(label = n), color = "white",hjust=-0.05, size = 4) + 
+  my_theme() -> barchart1
+```
+
+
+
+
+```{r ve bieu do map toan the gioi}
+dt_ins_map.code %>% 
+  mutate(hover = paste0("Number of insurance companies in ",country, ": ", n)) %>% 
+  plot_geo() %>% 
+  add_trace(z = ~n,
+            zmin=100,
+            zmax=dt_ins_map.code$n[2],
+            color = ~n,
+            locations = ~code,
+            colorscale = "Reds",
+            text = ~hover,
+            hoverinfo ="text") %>% 
+  colorbar(title = 'Number of companies') %>% 
+  layout(title = 'Distribution of insurance companies in the world <br> Source:<a href="https://www.kaggle.com/peopledatalabssf/free-7-million-company-dataset"> Kaggle.com </a>',
+         font = list(family = "my_font")) ->choropleth_map_global
+
+```
+
+```{r tao data us}
+#lựa chọn country là us và nối với data state để có được mã của các state
+dt_ins %>% 
+  filter( country == "United States")  %>%  
+  count(state) %>% 
+  arrange(desc(n)) %>% 
+  left_join(states, by.x = state, by.y =state) %>% 
+  mutate(hover = paste0("Number of insurance companies in ",state, ": ", n))-> dt_ins_us
+```
+
+```{r}
+graph_properties <- list(
+  scope = 'usa',
+  showland = TRUE,
+  landcolor = toRGB("white"),
+  color = toRGB("white")
+)
+
+font = list(
+  family = "DM Sans",
+  size = 15,
+  color = "black"
+)
+
+label = list(
+  bgcolor = "#EEEEEE",
+  bordercolor = "transparent",
+  font = font
+)
+
+
+plot_geo(dt_ins_us,locationmode ="USA-states") %>% 
+  add_trace(z = ~n,
+            color = ~n,
+            colorscale = "Portland",
+            locations = ~code,
+            text = ~hover,
+            hoverinfo ="text")%>% 
+  layout(geo = graph_properties,
+         title = "Amount of insurance companies in USA by state",
+         font = list(family = "DM Sans")) %>%
+  colorbar(title = 'Number of companies') %>% 
+  config(displayModeBar = FALSE) -> choropleth_map_us 
+```
+
+```{r map time}
+# dt_ins %>% 
+#   count(country,year_founded) %>% 
+#   arrange(year_founded) %>% 
+#   pivot_wider(names_from = year_founded,values_from = n)-> dt_ins_map_time
+# dt_ins_map_time[is.na(dt_ins_map_time)] <- 0
+# write_xlsx(dt_ins_map_time,"dt_ins_map_time.xlsx")
+dt_ins_map_time <- read_excel("C:/Users/Quang/Documents/dt_ins_map_time.xlsx")
+```
+
+```{r}
+dt_ins_map_time %>% 
+  pivot_longer(c(2:201),names_to = "year",values_to = "n") %>% 
+  mutate(hover = paste0("Number of insurance companies in ",country, "in ", year,": ", n)) %>% 
+  left_join(dt_ins_map.code[c(1,2)],by.x = country, by.y =country) %>% 
+  plot_geo(frame= ~year) %>% 
+  add_trace(z = ~n,
+            zmin=0,
+            zmax=500,
+            color = ~n,
+            locations = ~code,
+            colorscale = "Reds",
+            text = ~hover,
+            hoverinfo ="text") %>% 
+  colorbar(title = 'Number of companies') %>% 
+  layout(title = 'Distribution of insurance companies in Europe' ,
+         font = list(family = "my_font"),
+         geo = list(
+  scope = 'europe',
+  showland = TRUE,
+  landcolor = toRGB("white"),
+  color = toRGB("white"))) -> choropleth_map_global2
+```
+
+
+
+
+# 1.    Dữ liệu
+* Dữ liệu được lấy từ [kaggle](https://www.kaggle.com/peopledatalabssf/free-7-million-company-dataset/code?datasetId=189687&language=R) 
+![kaggle](C:/Users/Quang/kaggle.png)
+* Dữ liệu gốc bao gồm thông tin về 7,004,635 công ty trên thế giới đến khoảng đầu năm 2018
+* Trong bộ số liệu trên có khoảng 15,000+ công ty thuộc lĩnh vực bảo hiểm. Do bộ số liệu không đầy đủ, bài thuyết trình chỉ sử dụng 9,000+ quan sát.
+* Dữ liệu bao gồm 9 cột với các thông tin lần lượt là
+  + name: tên công ty
+  + year_founded: công ty được thành lập năm nào
+  + city: công ty thuộc thành phố nào
+  + state: công ty thuộc bang nào
+  + country: công ty được thành lập tại quốc gia nào
+  + linkedin_url: địa chỉ đến linkedin của công ty
+  + current_employee_estimate: số nhân viên hiện tại ước tính
+  + total_employee_estimate: tổng số nhân viên ước tính
+
+```{r}
+glimpse(dt_ins)      # xem dữ liệu
+```
+
+
+# 2.    Các thống kê và đồ thị minh họa
+## 2.1. Sự phân bố các công ty bảo hiểm trên thế giới
+
+```{r , fig.width = 10, fig.high = 8}
+choropleth_map_global
+```
+
+Phần lớn các công ty bảo hiểm nằm ở khu vực bắc mĩ và châu âu. số lượng công ty bảo hiểm ở khu vực châu á khá hạn chế, trừ Ấn Độ với 127 công ty.
+
+```{r, fig.width = 10, fig.high = 8}
+barchart1
+```
+
+Mĩ chiếm hơn nửa số công ty bảo hiểm trên thế giới.
+
+## 2.2. Sự phân bố các công ty bảo hiểm tại mĩ 
+
+```{r, fig.width = 10, fig.high = 8}
+choropleth_map_us 
+```
+# Các công ty bảo hiểm tại mĩ tập trung chủ yếu tại một vài bang ven biển và cực kì thưa thớt tại các khu vực còn lại
+## 2.3. sự phân bố các công ty bảo hiểm tại châu âu
+
+```{r,fig.width = 10, fig.high = 8}
+choropleth_map_global2
+```
+
+Các nước tây âu có nhiều công ty bảo hiểm hơn các khu vực còn lại của Châu âu, đặc biệt riêng vương quốc Anh có hơn 700 công ty bảo hiểm
+
+## 2.4. Sự phát triển về số lượng công ty bảo hiểm theo thời gian
+
+```{r, fig.width = 10, fig.high = 8}
+scatter_plot
+```
+
+```{r, fig.width = 10, fig.high = 8}
+barchart2
+```
+
+```{r,fig.width = 5, fig.high = 8}
+bang_2
+```
+
+Tốc độ gia tăng của các công ty bảo hiểm tăng dần và đạt đỉnh vào năm 2008 khi có hơn 200 công ty mới được thành lập. Sau khoảng thời gian này, số lượng công ty bảo hiểm được mở mới mỗi năm giảm dần theo thời gian
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
